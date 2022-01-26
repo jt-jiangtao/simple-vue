@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+<body>
+  <div>ok</div>
+</body>
+<script src="/dist/umd/vue.js"></script>
+<script>
+    let vm = new Vue({
+        el: '#app',
+        data(){
+            return {
+                a: [{a: 1}, 2, 3]
+            }
+        }
+    })
+    // 默认数据会递归使用defineProperty进行拦截，性能较差，所以vue3使用了proxy
+    // console.log(vm._data.a.a.a)
+    // 用户设置值之后也要observe
+    // vm._data.a = {b: 1}
+    // vm._data.a.b = 2
+
+    // 索引可以setter getter
+    // console.log(vm._data.a[1])
+    // 但是一般很少使用索引拦截，为了性能考虑
+    // push pop shift 拦截可以改变数组的方法进行操作
+    // console.log(vm._data)
+    // console.log(vm._data.a[0].a)
+    // 数组中新增对象
+</script>
+</html>
