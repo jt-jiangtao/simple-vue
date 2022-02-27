@@ -20,12 +20,15 @@ const methods = [
 
 methods.forEach(method => {
     arrayMethods[method] = function (...args){
+        // 当调用劫持后的方法 页面应该更新
+
+
         console.log("array-->")
         // this谁调用该方法this为谁
         // this为Observer中的data
         const result = oldArrayMethods[method].apply(this, arguments);
         let inserted;
-        debugger
+
         let ob = this.__ob__
         switch (method) {
             // 新增时可能会存在Object
@@ -40,7 +43,7 @@ methods.forEach(method => {
                 break;
         }
         if (inserted) ob.observeArray(inserted);
-
+        ob.dep.notify()
         return result;
     }
 })

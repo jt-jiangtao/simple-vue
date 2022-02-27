@@ -4,19 +4,104 @@
     <meta charset="UTF-8">
     <title>Title</title>
 </head>
+<style rel="stylesheet" type="text/css">
+    #app{
+        font-size: 40px;
+    }
+</style>
 <body>
-  <div>ok</div>
+<div id="app" style="color: red"> hello {{w}} {{a[0].a}} --> ok<div>hello</div></div>
+<div>------------</div>
 </body>
 <script src="/dist/umd/vue.js"></script>
 <script>
+    Vue.mixin({
+        a: 1,
+        before(){
+            console.log(1)
+        },
+        beforeCreate(){
+            console.log("beforeCreate-Mixin-1")
+        }
+    })
+    Vue.mixin({
+        a: 5,
+        b: 2,
+        before() {
+            console.log(2)
+        },
+        beforeCreate(){
+            console.log("beforeCreate-Mixin-2")
+        }
+    });
+
+
     let vm = new Vue({
+        // render --> template --> el
+        // ast解析template --> render
         el: '#app',
         data(){
             return {
-                a: [{a: 1}, 2, 3]
+                name: "jiangtao",
+                age: [1,2,3,4,5],
+                a: [{a: 1}, 2, 3],
+                arr: [1,2,3],
+                people: {
+                    name: 'jiangtao123',
+                    age: 20
+                },
+                w: "hello"
             }
+        },
+        // template: `<div id=app></div>`, // 如果没有，将寻找html中
+        // render(h){  // 默认为render方法 -> template -> el属性 ats解析template为render函数
+        //     return h('div', {id: 'a'}, 'hello')
+        // }
+        beforeMount(){
+            console.log("beforeMount")
+        },
+        mounted(){
+            console.log("mounted")
+        },
+        beforeCreate(){
+            console.log("beforeCreate")
+        },
+        created(){
+            console.log("created")
+        },
+        updated(){
+            console.log("updated")
+        },
+        methods: {
+            me(n,o){
+                console.log("me",n,o)
+            }
+        },
+        watch: {
+            // 1. key - value
+            // 'w': function (n,o) {
+            //     console.log("watcher",n,o)
+            // },
+            // 2. 数组形式
+            // 'w': [
+            //     (n,o)=>{
+            //         console.log("1", n,o)
+            //     },
+            //     (n,o)=>{
+            //         console.log("2", n,o)
+            //     }
+            // ]
+            // 3. 监控当前示例上的方法
+            'w': 'me'
+            // 4. 对象
+            // 'w': {
+            //     handler(newValue, oldValue){
+            //         console.log("object", newValue, oldValue)
+            //     }
+            // }
         }
     })
+    // vm.$mount('#app');
     // 默认数据会递归使用defineProperty进行拦截，性能较差，所以vue3使用了proxy
     // console.log(vm._data.a.a.a)
     // 用户设置值之后也要observe
@@ -30,5 +115,25 @@
     // console.log(vm._data)
     // console.log(vm._data.a[0].a)
     // 数组中新增对象
+
+    console.log(vm.$options)
+    // vm.people.name = 'hello'
+
+    // 数据变化自动更新
+    // vm._update(vm._render())
+    // vue更新策略是以组件为单位，给每个组件增加一个watcher，属性变化后重新调用watcher
+
+    // 多次更新进行批处理
+    // vue异步更新 -> 更新数据后不能立即拿到最新的节点
+    vm.age.push(1)
+    vm.age.push(2)
+    vm.age.push(3)
+    vm.age.push(4)
+    // 异步执行方法
+    console.log(vm.$el.innerHTML, "1-------------")
+    vm.$nextTick(()=>{
+        console.log(vm.$el.innerHTML, "2-------------")
+    })
+    vm.w = 'change' // set调用watcher run
 </script>
 </html>

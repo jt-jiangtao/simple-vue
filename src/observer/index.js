@@ -1,15 +1,15 @@
 import {arrayMethods} from "./array";
+import {defineProperty} from "../utils";
+import Dep from "./dep";
 
 
 class Observer {
     constructor(data) {
+        this.dep = new Dep()
+
         // 判断一个对象是否被观测过: 是否含有__ob__属性
-        Object.defineProperty(data, '__ob__',{
-            enumerable: false, // 不能被枚举，不能被循环出来 for...in
-            configurable: false, // delete
-            value: this,
-            writable: false
-        })
+
+        defineProperty(data, '__ob__' , this);
 
         // data.__ob__ = this
 
@@ -41,21 +41,36 @@ class Observer {
 }
 
 function defineReactive(data, key, value) {
-    observe(value)
+    // 获取到数组对应的dep
+    let childDep = observe(value)
+
+    let dep = new Dep() // 每个属性都有dep
+
     Object.defineProperty(data, key, {
-        get(){
+        get(){ // 依赖收集
             console.log("get---> ", key)
+            if (Dep.target){
+                dep.depend()
+                if (childDep){
+                    // 默认给数组和对象增加了dep属性
+                    childDep.dep.depend()
+                }
+            }
+            // 注意引用
             return value
         },
-        set(newValue){
+        set(newValue){ // 依赖更新
             console.log("set---> ", key, newValue)
             if (newValue === value) return;
             observe(newValue)
             value = newValue;
+
+            dep.notify()
         }
     })
 }
 
+// 只观测原来存在的数据
 export function observe(data) {
     // typeof null 也是object
 
