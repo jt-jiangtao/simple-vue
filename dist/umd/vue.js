@@ -339,11 +339,14 @@
 
 
   Dep.target = null;
+  var stack = [];
   function pushTarget(watcher) {
     Dep.target = watcher;
+    stack.push(watcher);
   }
   function popTarget() {
-    Dep.target = null; // 渲染完成后将target删除
+    stack.pop();
+    Dep.target = stack[stack.length - 1]; // 渲染完成后将target删除
   }
 
   var Observer = /*#__PURE__*/function () {
@@ -447,7 +450,11 @@
       this.id = id++; // watcher的唯一标识
 
       this.deps = [];
-      this.depsId = new Set(); // 如果是渲染watcher那么exprOrFn为重新渲染函数
+      this.depsId = new Set();
+      this.lazy = options.lazy; // lazy不可变
+
+      this.dirty = this.lazy; // dirty可变
+      // 如果是渲染watcher那么exprOrFn为重新渲染函数
       // 用户watcher的话为key即属性名称
 
       if (typeof exprOrFn == 'function') {
@@ -469,14 +476,14 @@
       } // 默认先调用一次get方法 进行取值 将结果保留
 
 
-      this.value = this.get();
+      this.value = this.lazy ? void 0 : this.get();
     }
 
     _createClass(Watcher, [{
       key: "get",
       value: function get() {
         pushTarget(this);
-        var result = this.getter(); // 渲染页面要取值，get方法
+        var result = this.getter.call(this.vm); // 渲染页面要取值，get方法
 
         popTarget();
         return result;
@@ -484,8 +491,12 @@
     }, {
       key: "update",
       value: function update() {
-        // 不要每次都调用get方法，get方法会非常消耗性能
-        queueWatcher(this); // this.get() // 重新渲染
+        if (this.lazy) {
+          this.dirty = true; // 页面重新渲染为空
+        } else {
+          // 不要每次都调用get方法，get方法会非常消耗性能
+          queueWatcher(this); // this.get() // 重新渲染
+        }
       }
     }, {
       key: "run",
@@ -509,6 +520,23 @@
           this.deps.push(dep);
           this.depsId.add(id);
           dep.addSub(this);
+        }
+      }
+    }, {
+      key: "evaluate",
+      value: function evaluate() {
+        this.value = this.get();
+        this.dirty = false;
+      }
+    }, {
+      key: "depend",
+      value: function depend() {
+        // 计算属性watcher会存储dep
+        // 通过watcher找到对应的所有Dep
+        var i = this.deps.length;
+
+        while (i--) {
+          this.deps[i].depend();
         }
       }
     }]);
@@ -560,7 +588,9 @@
       initData(vm);
     }
 
-    if (opts.computed) ;
+    if (opts.computed) {
+      initComputed(vm);
+    }
 
     if (opts.watch) {
       initWatch(vm);
@@ -579,6 +609,60 @@
     }
 
     observe(data);
+  }
+
+  function initComputed(vm) {
+    var computed = vm.$options.computed; // 需要watcher defineProperty dirty
+
+    var watchers = vm._computedWatchers = {};
+
+    for (var key in computed) {
+      var userDef = computed[key];
+      var getter = typeof userDef == 'function' ? userDef : userDef.get;
+      watchers[key] = new Watcher(vm, getter, function () {}, {
+        lazy: true
+      });
+      defineComputed(vm, key, userDef);
+    }
+  }
+
+  function defineComputed(target, key, userDef) {
+    var sharedPropertyDefinition = {
+      enumerable: true,
+      configurable: true,
+      get: function get() {},
+      set: function set() {}
+    };
+
+    if (typeof userDef == 'function') {
+      sharedPropertyDefinition.get = createComputedGetter(key);
+    } else {
+      sharedPropertyDefinition.get = createComputedGetter(key);
+      sharedPropertyDefinition.set = userDef.set;
+    }
+
+    Object.defineProperty(target, key, sharedPropertyDefinition);
+  }
+
+  function createComputedGetter(key) {
+    return function () {
+      // 这个方法是我们包装的方法
+      var watcher = this._computedWatchers[key];
+
+      if (watcher) {
+        if (watcher.dirty) {
+          // 判断是否需要执行用户传递的方法
+          // 执行
+          watcher.evaluate();
+        }
+
+        if (Dep.target) {
+          watcher.depend();
+        }
+
+        return watcher.value;
+      }
+    };
   }
 
   function initWatch(vm) {
@@ -909,14 +993,16 @@
       // 既有渲染功能 也有更新功能
       // 1. 比较两个元素的标签 标签不一样直接替换掉即可
       if (oldVnode.tag !== vnode.tag) {
-        return oldVnode.el.parentNode.replaceChild(createElm(vnode), oldVnode.el);
+        oldVnode.el.parentNode.replaceChild(createElm(vnode), oldVnode.el);
+        return vnode.el = oldVnode.el;
       } // 2. 标签一样，文本节点的虚拟节点tag都为undefined
       // 文本对比
 
 
       if (!oldVnode.tag) {
         if (oldVnode.text !== vnode.text) {
-          return oldVnode.el.textContent = vnode.text;
+          oldVnode.el.textContent = vnode.text;
+          return vnode.el = oldVnode.el;
         }
       } // 3. 标签相同并且必须开始比对标签的属性和儿子
       // 标签相同最好直接复用
@@ -962,11 +1048,27 @@
     var newStartIndex = 0;
     var newStartVnode = newChildren[newStartIndex];
     var newEndIndex = newChildren.length - 1;
-    var newEndVnode = newChildren[newEndIndex]; // 比较谁先循环完毕 停止
+    var newEndVnode = newChildren[newEndIndex];
+
+    function makeIndexByKey(children) {
+      var map = {};
+      children.forEach(function (item, index) {
+        if (item.key) {
+          map[item.key] = index;
+        }
+      });
+      return map;
+    }
+
+    var map = makeIndexByKey(oldChildren); // 比较谁先循环完毕 停止
 
     while (oldStartIndex <= oldEndIndex && newStartIndex <= newEndIndex) {
-      // oldStartIndex newStartIndex 如果两个是相同元素 对比孩子节点
-      if (isSameVnode(oldStartVnode, newStartVnode)) {
+      if (!oldStartVnode) {
+        oldStartVnode = oldChildren[++oldStartIndex];
+      } else if (!oldEndVnode) {
+        oldEndVnode = oldChildren[--oldEndIndex];
+      } else if (isSameVnode(oldStartVnode, newStartVnode)) {
+        // oldStartIndex newStartIndex 如果两个是相同元素 对比孩子节点
         patch(oldStartVnode, newStartVnode); // 更新属性 递归更新子节点
 
         oldStartVnode = oldChildren[++oldStartIndex];
@@ -975,7 +1077,44 @@
         patch(oldEndVnode, newEndVnode);
         oldEndVnode = oldChildren[--oldEndIndex];
         newEndVnode = newChildren[--newEndIndex];
-      } // 反转节点
+      } else if (isSameVnode(oldStartVnode, newEndVnode)) {
+        // 反转节点
+        patch(oldStartVnode, newEndVnode);
+        parent.insertBefore(oldStartVnode.el, oldEndVnode.el.nextSibling);
+        oldStartVnode = oldChildren[++oldStartIndex];
+        newEndVnode = newChildren[--newEndIndex];
+      } else if (isSameVnode(oldEndVnode, newStartVnode)) {
+        patch(oldEndVnode, newStartVnode);
+        parent.insertBefore(oldEndVnode.el, oldStartVnode.el);
+        oldEndVnode = oldChildren[--oldEndIndex];
+        newStartVnode = newChildren[++newStartIndex];
+      } else {
+        // 孩子之间没有关系 暴力对比
+        // 防止数组塌陷 需要置空
+        var moveIndex = map[newStartVnode.key];
+
+        if (moveIndex === undefined) {
+          // 没有可以复用的
+          parent.insertBefore(createElm(newStartVnode), oldStartVnode.el);
+        } else {
+          var moveVNode = oldChildren[moveIndex];
+          oldChildren[moveIndex] = null;
+          parent.insertBefore(moveVNode.el, oldStartVnode.el);
+          patch(moveVNode, newStartVnode); // 更新属性和孩子
+        }
+
+        newStartVnode = newChildren[++newStartIndex];
+      } // 循环的时候不能用index作为key
+      // old element
+      // <li key="1">1</li>
+      // <li key="2">2</li>
+      // <li key="3">3</li>
+      // reverse => after transform => static index有问题
+      // <li key="1">3</li>
+      // <li key="2">2</li>
+      // <li key="3">1</li>
+      // 反转实际上是移位复用，但是使用key作为index后，根据标签复用
+      // 如果没有id可以随机生成
 
     }
 
@@ -986,6 +1125,17 @@
         // 向前插入ele为当前向谁的前面插入
         var ele = newChildren[newEndIndex + 1] == null ? null : newChildren[newEndIndex + 1].el;
         parent.insertBefore(createElm(newChildren[i]), ele);
+      }
+    }
+
+    if (oldStartIndex <= oldEndIndex) {
+      for (var _i = oldStartIndex; _i <= oldEndIndex; _i++) {
+        var child = oldChildren[_i];
+
+        if (child !== null) {
+          // 如果为null，这个节点已经被处理过，pass
+          parent.removeChild(child.el);
+        }
       }
     }
   } // 标签相同 key相同 但是属性不相同是有可能的 这种情况只需要更新属性即可
@@ -1056,9 +1206,17 @@
 
   function lifecycleMixin(Vue) {
     Vue.prototype._update = function (vnode) {
-      var vm = this; // 用新的创建的元素替换掉原来的元素
+      var vm = this;
+      var preVnode = vm._vnode;
 
-      vm.$el = patch(vm.$el, vnode);
+      if (!preVnode) {
+        // 用新的创建的元素替换掉原来的元素
+        vm.$el = patch(vm.$el, vnode);
+      } else {
+        vm.$el = patch(preVnode, vnode);
+      }
+
+      vm._vnode = vnode; // 保存了vnode
     };
   }
   function mountComponent(vm, el) {
@@ -1214,24 +1372,6 @@
   stateMixin(Vue); // 初始化全局API
 
   initGlobalAPI(Vue); // differ算法测试
-  var vm1 = new Vue({
-    data: {
-      name: "vm1---"
-    }
-  });
-  var render1 = compilerToFunctions("<div>\n    <li key=\"A\" style=\"background-color: aquamarine\">A</li>\n    <li key=\"B\" style=\"background-color: red\">B</li>\n    <li key=\"C\" style=\"background-color: blue\">C</li>\n</div>");
-  var vnode1 = render1.call(vm1);
-  document.body.appendChild(createElm(vnode1));
-  var vm2 = new Vue({
-    data: {
-      name: "vm2---"
-    }
-  });
-  var render2 = compilerToFunctions("<div>\n    <li key=\"E\" style=\"background-color: green\">D</li>\n    <li key=\"A\" style=\"background-color: yellow\">F</li>\n    <li key=\"B\" style=\"background-color: red\">B</li>\n    <li key=\"C\" style=\"background-color: blue\">C</li>\n</div>");
-  var vnode2 = render2.call(vm2);
-  setTimeout(function () {
-    patch(vnode1, vnode2);
-  }, 3000);
 
   return Vue;
 

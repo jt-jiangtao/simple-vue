@@ -15,6 +15,8 @@ class Watcher {
         this.id = id++ // watcher的唯一标识
         this.deps = []
         this.depsId = new Set()
+        this.lazy = options.lazy // lazy不可变
+        this.dirty = this.lazy // dirty可变
 
         // 如果是渲染watcher那么exprOrFn为重新渲染函数
         // 用户watcher的话为key即属性名称
@@ -34,21 +36,25 @@ class Watcher {
         }
 
         // 默认先调用一次get方法 进行取值 将结果保留
-        this.value = this.get()
+        this.value = this.lazy ? void 0 : this.get()
     }
 
     get() {
         pushTarget(this)
-        let result = this.getter() // 渲染页面要取值，get方法
+        let result = this.getter.call(this.vm) // 渲染页面要取值，get方法
         popTarget()
         return result
     }
 
     update() {
 
-        // 不要每次都调用get方法，get方法会非常消耗性能
-        queueWatcher(this);
-        // this.get() // 重新渲染
+        if (this.lazy){
+            this.dirty = true // 页面重新渲染为空
+        }else {
+            // 不要每次都调用get方法，get方法会非常消耗性能
+            queueWatcher(this);
+            // this.get() // 重新渲染
+        }
     }
 
     run() {
@@ -68,6 +74,20 @@ class Watcher {
             this.deps.push(dep)
             this.depsId.add(id)
             dep.addSub(this)
+        }
+    }
+
+    evaluate(){
+        this.value = this.get()
+        this.dirty = false
+    }
+
+    depend(){
+        // 计算属性watcher会存储dep
+        // 通过watcher找到对应的所有Dep
+        let i = this.deps.length
+        while(i --){
+            this.deps[i].depend()
         }
     }
 }

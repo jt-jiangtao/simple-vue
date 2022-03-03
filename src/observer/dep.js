@@ -26,13 +26,15 @@ class Dep { // 收集模板中的{{}}对应的watcher
 // 一个watcher可以对应多个dep
 
 Dep.target = null;
-
+let stack = []
 export function pushTarget(watcher){
     Dep.target = watcher
+    stack.push(watcher)
 }
 
 export function popTarget(){
-    Dep.target = null // 渲染完成后将target删除
+    stack.pop()
+    Dep.target = stack[stack.length - 1] // 渲染完成后将target删除
 }
 
 export default Dep

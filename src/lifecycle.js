@@ -4,9 +4,14 @@ import Watcher from "./observer/watcher";
 export function lifecycleMixin(Vue){
     Vue.prototype._update = function (vnode){
         const vm = this
-
-        // 用新的创建的元素替换掉原来的元素
-        vm.$el = patch(vm.$el, vnode)
+        const preVnode = vm._vnode
+        if (!preVnode){
+            // 用新的创建的元素替换掉原来的元素
+            vm.$el = patch(vm.$el, vnode);
+        }else {
+            vm.$el = patch(preVnode, vnode)
+        }
+        vm._vnode = vnode // 保存了vnode
     }
 }
 

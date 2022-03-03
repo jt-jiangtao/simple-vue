@@ -1,6 +1,7 @@
 import {observe} from "./observer/index";
 import {nextTick, proxy} from "./utils";
 import Watcher from "./observer/watcher";
+import Dep from "./observer/dep";
 
 export function initState(vm) {
     const  opts = vm.$options;
@@ -44,7 +45,49 @@ function initData(vm) {
     observe(data)
 }
 
-function initComputed(vm) {}
+function initComputed(vm) {
+    let computed = vm.$options.computed
+    // 需要watcher defineProperty dirty
+    const watchers = vm._computedWatchers = {}
+    for (let key in computed) {
+        const userDef = computed[key]
+        const getter = typeof userDef == 'function' ? userDef : userDef.get;
+        watchers[key] = new Watcher(vm, getter, ()=>{}, {lazy: true})
+        defineComputed(vm, key, userDef)
+    }
+}
+
+function defineComputed(target, key, userDef){
+    const sharedPropertyDefinition = {
+        enumerable: true,
+        configurable: true,
+        get: ()=>{},
+        set: ()=>{}
+    }
+    if (typeof userDef == 'function'){
+        sharedPropertyDefinition.get = createComputedGetter(key)
+    }else {
+        sharedPropertyDefinition.get = createComputedGetter(key)
+        sharedPropertyDefinition.set = userDef.set
+    }
+    Object.defineProperty(target, key, sharedPropertyDefinition)
+}
+
+function createComputedGetter(key){
+    return function (){ // 这个方法是我们包装的方法
+        const watcher = this._computedWatchers[key]
+        if (watcher){
+            if (watcher.dirty){ // 判断是否需要执行用户传递的方法
+                // 执行
+                watcher.evaluate()
+            }
+            if (Dep.target){
+                watcher.depend()
+            }
+            return watcher.value
+        }
+    }
+}
 
 function initWatch(vm) {
     let watch = vm.$options.watch

@@ -21,36 +21,36 @@ initGlobalAPI(Vue)
 
 
 // differ算法测试
-import {compilerToFunctions} from "./compiler/index";
-import {createElm, patch} from "./vdom/patch"
-let vm1 = new Vue({
-    data: {
-        name: "vm1---"
-    }
-})
-let render1 = compilerToFunctions(`<div>
-    <li key="A" style="background-color: aquamarine">A</li>
-    <li key="B" style="background-color: red">B</li>
-    <li key="C" style="background-color: blue">C</li>
-</div>`)
-let vnode1 = render1.call(vm1)
-document.body.appendChild(createElm(vnode1))
-
-let vm2 = new Vue({
-    data: {
-        name: "vm2---"
-    }
-})
-let render2 = compilerToFunctions(`<div>
-    <li key="E" style="background-color: green">D</li>
-    <li key="A" style="background-color: yellow">F</li>
-    <li key="B" style="background-color: red">B</li>
-    <li key="C" style="background-color: blue">C</li>
-</div>`)
-let vnode2 = render2.call(vm2)
-
-setTimeout(()=>{
-    patch(vnode1, vnode2)
-}, 3000)
+// import {compilerToFunctions} from "./compiler/index";
+// import {createElm, patch} from "./vdom/patch"
+// let vm1 = new Vue({
+//     data: {
+//         name: "vm1---"
+//     }
+// })
+// let render1 = compilerToFunctions(`<div>
+//     <li key="C" style="background-color: aquamarine">C</li>
+//     <li key="E" style="background-color: red">E</li>
+//     <li key="D" style="background-color: blue">D</li>
+// </div>`)
+// let vnode1 = render1.call(vm1)
+// document.body.appendChild(createElm(vnode1))
+//
+// let vm2 = new Vue({
+//     data: {
+//         name: "vm2---"
+//     }
+// })
+// let render2 = compilerToFunctions(`<div>
+//     <li key="A" style="background-color: yellow">A</li>
+//     <li key="D" style="background-color: red">D</li>
+//     <li key="E" style="background-color: blue">E</li>
+//     <li key="F" style="background-color: blue">F</li>
+// </div>`)
+// let vnode2 = render2.call(vm2)
+//
+// setTimeout(()=>{
+//     patch(vnode1, vnode2)
+// }, 3000)
 
 export default Vue
